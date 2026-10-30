@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ローバー走行ビューア</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 左に3Dステージ、右に操作パネル。狭い画面ではステージの下にパネルを積む。 */
+:root {
+  --bg: #eaf1f0;
+  --panel: #f6faf9;
+  --panel-2: #e3ecea;
+  --fg: #10201f;
+  --muted: #4f6666;
+  --line: #c5d4d2;
+  --accent: #0d8a79;
+  --accent-ink: #ffffff;
+  --accent-soft: #cfeae5;
+  --warn: #b4452a;
+  --scene-sky: #dbe8ec;
+  --scene-ground: #d9cdbb;
+  --scene-line: #c4b49d;
+  --scene-rock: #b3a48f;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1315;
+    --panel: #101c1f;
+    --panel-2: #172a2d;
+    --fg: #e2f0ee;
+    --muted: #92aaa8;
+    --line: #243639;
+    --accent: #4fe0c0;
+    --accent-ink: #03201a;
+    --accent-soft: #123b36;
+    --warn: #ff9a7a;
+    --scene-sky: #0b1722;
+    --scene-ground: #2a2a33;
+    --scene-line: #3a3a47;
+    --scene-rock: #3d3d4a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a1315;
+  --panel: #101c1f;
+  --panel-2: #172a2d;
+  --fg: #e2f0ee;
+  --muted: #92aaa8;
+  --line: #243639;
+  --accent: #4fe0c0;
+  --accent-ink: #03201a;
+  --accent-soft: #123b36;
+  --warn: #ff9a7a;
+  --scene-sky: #0b1722;
+  --scene-ground: #2a2a33;
+  --scene-line: #3a3a47;
+  --scene-rock: #3d3d4a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+header .tag { font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; }
+header h1 { margin: 0; font-size: 19px; font-weight: 700; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); font-size: 12.5px; }
+
+.app { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
+.stage {
+  position: relative; min-height: 0; border-radius: 6px; overflow: hidden;
+  background: var(--scene-sky); border: 1px solid var(--line);
+}
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.stage.drag { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.overlay { position: absolute; display: flex; gap: 6px; flex-wrap: wrap; }
+.overlay.tl { top: 10px; left: 10px; right: 10px; }
+.overlay.bl { bottom: 10px; left: 10px; right: 10px; justify-content: space-between; align-items: flex-end; }
+.hud {
+  font-family: var(--font-mono); font-size: 11px; color: var(--fg);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px;
+}
+.msg-gl, .loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; }
+.msg-gl { color: var(--warn); }
+.loading { color: var(--fg); background: color-mix(in srgb, var(--scene-sky) 88%, transparent); font-size: 13px; }
+
+.panel {
+  min-height: 0; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 18px;
+}
+.panel section { display: flex; flex-direction: column; gap: 10px; }
+.panel h2 {
+  margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .1em; color: var(--muted);
+  border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+.hint { margin: 0; color: var(--muted); font-size: 12px; }
+.hint.warn { color: var(--warn); }
+
+.btn, button {
+  font: inherit; font-size: 13px; color: var(--fg); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
+}
+.btn:hover, button:hover { border-color: var(--accent); }
+.btn:focus-within, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+button.primary[aria-pressed="true"] { background: var(--accent); }
+
+.wheels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wheel {
+  display: grid; grid-template-columns: 2.6em minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
+  padding: 6px 8px; background: var(--panel-2); border-radius: 4px;
+}
+.wheel .pos { font-weight: 700; }
+.wheel .meta { min-width: 0; display: flex; flex-direction: column; }
+.wheel .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.wheel .spec { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wheel .spec.warn { color: var(--warn); }
+.wheel input[type="color"] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
+.wheel .btn { padding: 3px 8px; font-size: 12px; }
+
+.field { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) 4.8em; gap: 8px; align-items: center; }
+.field label { font-size: 12.5px; }
+.field output { font-family: var(--font-mono); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.field.two { grid-template-columns: 7.5em minmax(0, 1fr); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+select {
+  font: inherit; font-size: 13px; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 0; width: 100%;
+}
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; }
+.check input { margin-top: 4px; }
+.manual { display: flex; flex-direction: column; gap: 8px; }
+.manual[hidden] { display: none; }
+.motion { font-family: var(--font-mono); font-size: 11.5px; background: var(--panel-2); border-radius: 4px; padding: 6px 8px; margin: 0; font-variant-numeric: tabular-nums; }
+#status { min-height: 1.6em; font-size: 12.5px; color: var(--muted); }
+#status.err { color: var(--warn); }
+
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 58vh; min-height: 320px; }
+  .panel { overflow: visible; }
+  .drop-hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<header>
+  <span class="tag">KIT-AURORA</span>
+  <h1>ローバー走行ビューア</h1>
+  <p>starmを回して向きを変え、タイヤのSTLだけを差し替えて走らせます。</p>
+</header>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="gl" aria-label="ローバーが走る3Dビュー"></canvas>
+    <div class="overlay tl">
+      <button id="playBtn" class="primary" aria-pressed="true">一時停止</button>
+      <button id="camIso" type="button">斜め</button>
+      <button id="camSide" type="button">真横</button>
+      <button id="camFront" type="button">正面</button>
+      <button id="camBack" type="button">後ろ</button>
+      <button id="camTop" type="button">真上</button>
+      <button id="autoRot" type="button" aria-pressed="false">自動回転</button>
+    </div>
+    <div class="overlay bl">
+      <span class="hud" id="hudSpeed">速度 40 cm/s</span>
+      <span class="hud drop-hint">タイヤのSTLをここにドロップできます</span>
+    </div>
+    <div class="loading" id="loading">ローバーの部品を読み込み中…</div>
+  </div>
+
+  <aside class="panel" aria-label="設定">
+    <section>
+      <h2>ステアリング（starmの回転）</h2>
+      <div class="field two"><label for="steerMode">走り方</label>
+        <select id="steerMode">
+          <option value="straight">直進</option>
+          <option value="front">前輪で曲がる</option>
+          <option value="rear4">前後逆向きに切る（小回り）</option>
+          <option value="crab">4輪同じ向き（斜めに進む）</option>
+          <option value="spin">その場で回る</option>
+          <option value="manual">1本ずつ手動</option>
+        </select></div>
+      <div class="field"><label for="handle">ハンドル</label><input id="handle" type="range" min="-40" max="40" step="1" value="0"><output id="handleOut"></output></div>
+      <div class="manual" id="manual" hidden></div>
+      <button id="straightBtn" type="button">まっすぐに戻す</button>
+      <p class="motion" id="motion" aria-live="off">直進中</p>
+      <p class="hint warn" id="slipWarn" hidden></p>
+      <p class="hint">プラスが左、マイナスが右です。キーボードの ← → でもハンドルを切れます。</p>
+    </section>
+
+    <section>
+      <h2>タイヤ（交換できる部品）</h2>
+      <p class="hint">最初は付属の標準タイヤです。STLを1つ選ぶと4輪すべてに付き、左右が逆のタイヤは自動で反転します。ファイル名に lf・rf・lb・rb を含めると、その位置に付きます。</p>
+      <label class="btn primary" for="wheelFiles">タイヤのSTLを読み込む</label>
+      <input id="wheelFiles" class="sr-only" type="file" accept=".stl" multiple>
+      <ul class="wheels" id="wheelList"></ul>
+      <button id="resetTires" type="button">標準タイヤに戻す</button>
+      <div class="field two"><label for="unit">STLの単位</label>
+        <select id="unit"><option value="mm" selected>mm（Fusionの標準）</option><option value="cm">cm</option></select></div>
+      <div class="field two"><label for="pos">位置の合わせ方</label>
+        <select id="pos"><option value="origin" selected>STLの原点どおり</option><option value="center">形の中心を車軸に合わせる</option></select></div>
+      <div class="field two"><label for="axis">車軸の向き</label>
+        <select id="axis"><option value="y" selected>Y（標準タイヤと同じ）</option><option value="auto">自動（一番薄い方向）</option><option value="x">X</option><option value="z">Z</option></select></div>
+      <label class="check"><input id="mirror" type="checkbox" checked><span>左右が逆のSTLは、反転して付ける</span></label>
+      <p class="hint">標準タイヤは原点が車軸の中心で、車軸がY方向です。同じ座標で作ると、原点どおりのまま取り付けられます。</p>
+    </section>
+
+    <section>
+      <h2>走行</h2>
+      <div class="field"><label for="speed">速さ</label><input id="speed" type="range" min="0" max="120" step="1" value="40"><output id="speedOut"></output></div>
+      <label class="check"><input id="reverse" type="checkbox"><span>後退する</span></label>
+      <div class="field two"><label for="terrain">路面</label>
+        <select id="terrain"><option value="flat">平らな地面</option><option value="rocks" selected>石ころ道</option></select></div>
+    </section>
+
+    <p id="status" role="status" aria-live="polite"></p>
+  </aside>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const $ = (s) => document.querySelector(s);
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const deg = THREE.MathUtils.radToDeg, rad = THREE.MathUtils.degToRad;
+const statusEl = $('#status');
+function setStatus(text, isErr = false) { statusEl.textContent = text; statusEl.classList.toggle('err', isErr); }
+
+/* ---------- ローバーのCAD寸法(mm)。座標はCADのまま: X前、Y左、Z上 ---------- */
+const MOUNT = { x: 360, y: 360, z: 68.6 }; // base_link の4隅にあるサスアーム取り付け中心。zはボス上面
+const HUB_DROP = 231.53;                    // サスアーム原点からモーター軸中心までの下方向距離
+const TIRE_BACK = 56;                       // 標準タイヤの原点は、モーター軸端がハブ板に当たる位置(外側から56mm)
+const HUB_Z = MOUNT.z - HUB_DROP;           // 軸の高さ
+const MM = 0.1;                              // 表示は 1 = 1cm
+const TILE = 40;                             // 地面テクスチャ1枚の大きさ(cm)
+const WRAP = 700;                            // 石ころが繰り返される範囲(cm)
+
+const state = {
+  unit: 'mm', pos: 'origin', axis: 'y', mirror: true, speed: 40, terrain: 'rocks', playing: true,
+  steerMode: 'straight', handle: 0, manual: [0, 0, 0, 0], reverse: false,
+};
+
+/* ---------- レンダラー ---------- */
+const stage = $('#stage'), canvas = $('#gl');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch (e) {
+  $('#loading').remove();
+  stage.insertAdjacentHTML('beforeend', '<div class="msg-gl">この環境では3D表示(WebGL)が使えません。別のブラウザで開いてください。</div>');
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 5, 4000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 24, 0);
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 40;
+controls.maxDistance = 700;
+controls.autoRotateSpeed = 1.6;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a99, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -110, near: 20, far: 600 });
+sun.shadow.bias = -0.0004;
+scene.add(sun, sun.target);
+
+/* ---------- 地面と石 ---------- */
+const groundTex = new THREE.CanvasTexture(document.createElement('canvas'));
+groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+groundTex.colorSpace = THREE.SRGBColorSpace;
+groundTex.anisotropy = 8;
+groundTex.repeat.set(4000 / TILE, 4000 / TILE);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+function drawGround() {
+  const c = groundTex.image; c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = css('--scene-ground'); g.fillRect(0, 0, 512, 512);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = rnd() > 0.5 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+    const s = 1 + rnd() * 3; g.fillRect(rnd() * 512, rnd() * 512, s, s);
+  }
+  g.strokeStyle = css('--scene-line'); g.lineWidth = 3;
+  g.strokeRect(0, 0, 512, 512);
+  groundTex.needsUpdate = true;
+}
+
+// 石ころは地面に固定。ローバーの周囲 WRAP の範囲で繰り返し、車体に近づくと小さくなって車輪との重なりを避ける
+const rockMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+const rocks = [];
+{
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 44; i++) {
+    const s = 3 + rnd() * 8;
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), rockMat);
+    m.userData.base = new THREE.Vector3(s * (1 + rnd() * 0.5), s * 0.6, s * (1 + rnd() * 0.5));
+    m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    m.position.set((rnd() - 0.5) * WRAP, s * 0.3, (rnd() - 0.5) * WRAP);
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m); rocks.push(m);
+  }
+}
+
+function applyTheme() {
+  const sky = css('--scene-sky');
+  scene.background = new THREE.Color(sky);
+  scene.fog = new THREE.Fog(sky, 350, 1400);
+  rockMat.color.set(css('--scene-rock'));
+  drawGround();
+}
+
+/* ---------- ローバー ---------- */
+// roverRoot: 地面上の位置と向き。rover: CAD座標(Z上)のまま組み、Y上に回して mm→cm に縮める
+const roverRoot = new THREE.Group();
+const rover = new THREE.Group();
+rover.rotation.x = -Math.PI / 2;
+rover.scale.setScalar(MM);
+roverRoot.add(rover);
+scene.add(roverRoot);
+
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1, ...o });
+const baseMat = mat('#dfe6e7', { roughness: 0.5, metalness: 0.15 });
+const starmMat = mat('#8c9ca0', { roughness: 0.42, metalness: 0.35 });
+function shadowed(o) { o.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } }); return o; }
+
+const stlLoader = new STLLoader();
+function smooth(geom) {
+  try { return toCreasedNormals(geom, rad(35)); } catch (e) { return geom; }
+}
+function parseSTL(buf) {
+  const g = stlLoader.parse(buf);
+  if (!g.attributes.position || g.attributes.position.count < 3) throw new Error('形状が空です');
+  return smooth(g);
+}
+
+// 左右・前後。side: +1 が左(+Y)。sx: +1 が前(+X)。pivot がstarmの回転軸(縦のZ軸)
+const slots = [
+  { label: '前左', key: 'lf', sx: 1, side: 1 },
+  { label: '前右', key: 'rf', sx: 1, side: -1 },
+  { label: '後左', key: 'lb', sx: -1, side: 1 },
+  { label: '後右', key: 'rb', sx: -1, side: -1 },
+];
+slots.forEach((s) => {
+  s.mat = mat('#19b394', { roughness: 0.62 });
+  s.angle = 0; s.steer = 0; s.radius = 185; s.width = 120; s.holder = null; s.spin = null; s.src = null;
+  s.pivot = new THREE.Group();
+  s.pivot.position.set(s.sx * MOUNT.x, s.side * MOUNT.y, MOUNT.z);
+  rover.add(s.pivot);
+});
+let stdTires = null; // { l: geometry, r: geometry }
+
+function useStandard(slot) {
+  const g = slot.side > 0 ? stdTires.l : stdTires.r;
+  slot.src = { geom: g, std: true, side: slot.side, name: `標準 tire_${slot.key}.stl` };
+}
+
+function buildWheel(slot) {
+  if (slot.holder) { slot.pivot.remove(slot.holder); slot.holder.traverse((n) => n.geometry && n.geometry.dispose()); }
+  const src = slot.src;
+  let g = src.geom.clone();
+  if (!src.std && state.unit === 'cm') g.scale(10, 10, 10);
+  g.computeBoundingBox();
+  let ax = state.axis;
+  if (src.std) ax = 'y';
+  else if (ax === 'auto') {
+    const s = g.boundingBox.getSize(new THREE.Vector3());
+    ax = ['x', 'y', 'z'][[s.x, s.y, s.z].indexOf(Math.min(s.x, s.y, s.z))];
+  }
+  if (!src.std && (state.pos === 'center' || ax !== 'y')) {
+    const c = g.boundingBox.getCenter(new THREE.Vector3());
+    g.translate(-c.x, -c.y, -c.z);
+    if (ax === 'x') g.rotateZ(Math.PI / 2); else if (ax === 'z') g.rotateX(-Math.PI / 2);
+    g.translate(0, slot.side * 60, 0); // 標準タイヤの幅の中心(原点から60mm)に合わせる
+  }
+  g.computeBoundingBox();
+  const pos = g.attributes.position; let r2 = 0;
+  for (let i = 0; i < pos.count; i++) { const d = pos.getX(i) ** 2 + pos.getZ(i) ** 2; if (d > r2) r2 = d; }
+  slot.radius = Math.sqrt(r2);
+  slot.width = g.boundingBox.max.y - g.boundingBox.min.y;
+
+  const mesh = new THREE.Mesh(g, slot.mat);
+  const flip = new THREE.Group(); flip.add(mesh);
+  flip.scale.y = state.mirror && src.side !== slot.side ? -1 : 1;
+  const spin = new THREE.Group(); spin.add(flip);
+  const holder = new THREE.Group(); holder.add(spin);
+  holder.position.set(0, -slot.side * TIRE_BACK, -HUB_DROP); // starmの原点(回転軸)から見た位置
+  shadowed(holder);
+  slot.pivot.add(holder);
+  slot.spin = spin; slot.holder = holder;
+}
+
+function layout() {
+  const Rmax = Math.max(...slots.map((s) => s.radius));
+  rover.position.y = (Rmax - HUB_Z) * MM; // 一番大きいタイヤが地面に接する高さ
+  refreshSpecs();
+}
+function rebuildWheels() { slots.forEach(buildWheel); layout(); }
+
+/* ---------- ステアリングと運動学 ---------- */
+// 車輪は横滑りしない(転がる向きにしか進まない)と仮定し、車体の速度 (vx, vy, ω) を求める。
+// 各輪の条件: -sinδ·vx + cosδ·vy + ω(sinδ·y + cosδ·x) = 0  →  3×3の対称行列の最小固有ベクトル
+function eig3(M) {
+  const a = M.map((r) => r.slice()), v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 30; sweep++) {
+    if (Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]) < 1e-13) break;
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+      if (Math.abs(a[p][q]) < 1e-15) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const x = a[k][p], y = a[k][q]; a[k][p] = c * x - s * y; a[k][q] = s * x + c * y; }
+      for (let k = 0; k < 3; k++) { const x = a[p][k], y = a[q][k]; a[p][k] = c * x - s * y; a[q][k] = s * x + c * y; }
+      for (let k = 0; k < 3; k++) { const x = v[k][p], y = v[k][q]; v[k][p] = c * x - s * y; v[k][q] = s * x + c * y; }
+    }
+  }
+  const i = [0, 1, 2].sort((m, n) => a[m][m] - a[n][n])[0];
+  return [v[0][i], v[1][i], v[2][i]];
+}
+function hubPos(slot, steer) { // 車輪中心の位置(cm)。starmが回ると、回転軸から56mmずれた車輪中心も回る
+  const d = TIRE_BACK * MM * slot.side;
+  return { x: slot.sx * MOUNT.x * MM + d * Math.sin(steer), y: slot.side * MOUNT.y * MM - d * Math.cos(steer) };
+}
+const LC = 50; // 回転と並進の重みをそろえるための代表長さ(cm)。u[2] = ω·LC
+function solveMotion(angles, speed, reverse) {
+  const rows = slots.map((s, i) => {
+    const h = hubPos(s, angles[i]), sn = Math.sin(angles[i]), cs = Math.cos(angles[i]);
+    return { h, sn, cs, a: [-sn, cs, (sn * h.y + cs * h.x) / LC] };
+  });
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  rows.forEach((r) => { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i][j] += r.a[i] * r.a[j]; });
+  let u = eig3(M);
+  const roll = (u) => rows.map((r) => r.cs * (u[0] - u[2] / LC * r.h.y) + r.sn * (u[1] + u[2] / LC * r.h.x));
+  let s = roll(u);
+  const sum = s.reduce((p, c) => p + c, 0);
+  if (sum < -1e-9 || (Math.abs(sum) <= 1e-9 && u[2] < 0)) { u = u.map((x) => -x); s = s.map((x) => -x); }
+  const mean = s.reduce((p, c) => p + Math.abs(c), 0) / 4;
+  if (speed <= 0 || mean < 1e-9) return { vx: 0, vy: 0, w: 0, s: [0, 0, 0, 0], slip: 0, radius: Infinity };
+  const k = (reverse ? -1 : 1) * speed / mean;
+  const slip = Math.max(...rows.map((r) => Math.abs(r.a[0] * u[0] + r.a[1] * u[1] + r.a[2] * u[2]))) * Math.abs(k);
+  const vx = u[0] * k, vy = u[1] * k, w = u[2] * k / LC;
+  return { vx, vy, w, s: s.map((x) => x * k), slip, radius: Math.abs(w) > 1e-4 ? Math.hypot(vx, vy) / Math.abs(w) : Infinity };
+}
+
+// 旋回の中心(ICR)に向かう半径に垂直な向きが、各輪の向き。-90°〜90°にそろえる(逆回転で補う)
+function headingFromICR(cx, cy, p) {
+  let a = Math.atan2(p.x - cx, -(p.y - cy));
+  if (a > Math.PI / 2) a -= Math.PI; else if (a < -Math.PI / 2) a += Math.PI;
+  return a;
+}
+// 車輪中心は starm の回転軸から56mmずれているので、向きを決めると中心の位置も動く。何度か繰り返して辻褄を合わせる
+function anglesAround(cx, cy) {
+  let a = slots.map((s) => headingFromICR(cx, cy, hubPos(s, 0)));
+  for (let n = 0; n < 8; n++) a = slots.map((s, i) => headingFromICR(cx, cy, hubPos(s, a[i])));
+  return a;
+}
+function targetAngles() {
+  const dc = rad(state.handle), L = (MOUNT.x * 2) * MM; // 前後の軸の間隔(cm)
+  switch (state.steerMode) {
+    case 'front':
+    case 'rear4': {
+      if (Math.abs(dc) < 1e-4) return [0, 0, 0, 0];
+      const front = state.steerMode === 'front';
+      const R = (front ? L : L / 2) / Math.tan(Math.abs(dc));
+      return anglesAround(front ? -L / 2 : 0, Math.sign(dc) * R);
+    }
+    case 'crab': return [dc, dc, dc, dc];
+    case 'spin': return anglesAround(0, 0);
+    case 'manual': return state.manual.map(rad);
+    default: return [0, 0, 0, 0];
+  }
+}
+
+/* ---------- 表示用リスト ---------- */
+const listEl = $('#wheelList');
+slots.forEach((s, i) => {
+  const li = document.createElement('li'); li.className = 'wheel';
+  li.innerHTML = `<span class="pos">${s.label}</span>
+    <span class="meta"><span class="fname" id="wn${i}"></span><span class="spec" id="ws${i}"></span></span>
+    <input type="color" id="wc${i}" value="#19b394" aria-label="${s.label}の色">
+    <label class="btn" for="wf${i}">変更</label><input id="wf${i}" class="sr-only" type="file" accept=".stl">`;
+  listEl.appendChild(li);
+  li.querySelector('input[type=color]').addEventListener('input', (e) => { s.mat.color.set(e.target.value); });
+  li.querySelector('input[type=file]').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (f) await loadWheelFiles([f], i);
+  });
+});
+let motion = { vx: 0, vy: 0, w: 0, s: [0, 0, 0, 0], slip: 0, radius: Infinity };
+function refreshSpecs() {
+  if (!slots.every((s) => s.src)) return; // 部品の読み込みが終わるまでは何もしない
+  const Rmax = Math.max(...slots.map((s) => s.radius));
+  slots.forEach((s, i) => {
+    $('#wn' + i).textContent = s.src.name; $('#wn' + i).title = s.src.name;
+    const rpm = Math.abs(motion.s[i]) / (s.radius * MM) * 60 / (2 * Math.PI);
+    const gap = Rmax - s.radius, st = deg(s.steer);
+    const el = $('#ws' + i);
+    el.textContent = `径 ${(s.radius * 2).toFixed(0)}mm  幅 ${s.width.toFixed(0)}mm  ${rpm.toFixed(0)}rpm  操舵 ${st >= 0 ? '+' : ''}${st.toFixed(0)}°` + (gap > 1 ? `  浮き ${gap.toFixed(0)}mm` : '');
+    el.classList.toggle('warn', gap > 1);
+  });
+  $('#hudSpeed').textContent = `速度 ${state.reverse ? '-' : ''}${state.speed} cm/s`;
+  const w = deg(motion.w);
+  $('#motion').textContent = Math.abs(motion.w) < 0.05 || state.speed === 0 ? (state.speed === 0 ? '停止中' : '直進中')
+    : (Number.isFinite(motion.radius) && motion.radius > 1 ? `旋回半径 ${motion.radius.toFixed(0)} cm　回転 ${w >= 0 ? '+' : ''}${w.toFixed(1)}°/秒` : `その場で回転 ${w >= 0 ? '+' : ''}${w.toFixed(1)}°/秒`);
+  const warn = $('#slipWarn'), bad = state.speed > 0 && motion.slip > Math.max(0.6, 0.06 * state.speed);
+  warn.hidden = !bad;
+  if (bad) warn.textContent = `4本の向きが合っていないため、タイヤが横に滑っています（最大 ${motion.slip.toFixed(1)} cm/s）。`;
+}
+
+/* ---------- タイヤの読み込み ---------- */
+const nameSlot = (n) => { const m = /(?:^|[^a-z])(lf|rf|lb|rb)(?:[^a-z]|$)/i.exec(n.replace(/\.stl$/i, '')); return m ? slots.findIndex((s) => s.key === m[1].toLowerCase()) : -1; };
+function sideOf(name, geom) {
+  const n = name.toLowerCase().replace(/\.stl$/, '');
+  if (/(?:^|[^a-z])(?:lf|lb|left)(?:[^a-z]|$)/.test(n)) return 1;
+  if (/(?:^|[^a-z])(?:rf|rb|right)(?:[^a-z]|$)/.test(n)) return -1;
+  geom.computeBoundingBox();
+  const cy = (geom.boundingBox.min.y + geom.boundingBox.max.y) / 2;
+  return Math.abs(cy) > 1 ? Math.sign(cy) : 1;
+}
+async function loadWheelFiles(fileList, onlyIndex = null) {
+  const files = [...fileList].filter((f) => /\.stl$/i.test(f.name));
+  if (!files.length) { setStatus('STLファイル（.stl）を選んでください。', true); return; }
+  try {
+    const items = [];
+    for (const f of files) { const g = parseSTL(await f.arrayBuffer()); items.push({ geom: g, std: false, name: f.name, side: sideOf(f.name, g) }); }
+    if (onlyIndex !== null) slots[onlyIndex].src = items[0];
+    else if (items.every((it) => nameSlot(it.name) >= 0)) items.forEach((it) => { slots[nameSlot(it.name)].src = it; });
+    else if (items.length === 1) slots.forEach((s) => { s.src = items[0]; });
+    else items.slice(0, 4).forEach((it, i) => { slots[i].src = it; });
+    rebuildWheels();
+    const Rs = slots.map((s) => s.radius), warn = Math.max(...Rs) - Math.min(...Rs) > 1;
+    setStatus('タイヤを装着しました。' + (warn ? '径が違うタイヤがあり、小さい方は地面から浮いています。' : '') + '大きさが想定と違うときは「STLの単位」を確認してください。');
+  } catch (err) {
+    setStatus('STLを読み込めませんでした：' + err.message, true);
+  }
+}
+$('#wheelFiles').addEventListener('change', async (e) => { const f = [...e.target.files]; e.target.value = ''; await loadWheelFiles(f); });
+$('#resetTires').addEventListener('click', () => { slots.forEach(useStandard); rebuildWheels(); setStatus('標準タイヤに戻しました。'); });
+stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('drag'); });
+stage.addEventListener('dragleave', () => stage.classList.remove('drag'));
+stage.addEventListener('drop', async (e) => { e.preventDefault(); stage.classList.remove('drag'); await loadWheelFiles(e.dataTransfer.files); });
+
+/* ---------- 設定UI ---------- */
+const manualEl = $('#manual');
+slots.forEach((s, i) => {
+  const d = document.createElement('div'); d.className = 'field';
+  d.innerHTML = `<label for="m${i}">${s.label}</label><input id="m${i}" type="range" min="-90" max="90" step="1" value="0"><output id="mo${i}">0°</output>`;
+  manualEl.appendChild(d);
+  d.querySelector('input').addEventListener('input', (e) => { state.manual[i] = Number(e.target.value); syncOut(); });
+});
+function syncOut() {
+  $('#speedOut').textContent = state.speed + ' cm/s';
+  $('#handleOut').textContent = (state.handle > 0 ? '+' : '') + state.handle + '°';
+  state.manual.forEach((v, i) => { $('#mo' + i).textContent = (v > 0 ? '+' : '') + v + '°'; });
+  const m = state.steerMode;
+  $('#handle').disabled = !['front', 'rear4', 'crab'].includes(m);
+  manualEl.hidden = m !== 'manual';
+}
+$('#steerMode').addEventListener('change', (e) => {
+  state.steerMode = e.target.value;
+  if (state.steerMode === 'manual') { // いまの向きから手動操作を始める
+    state.manual = slots.map((s) => Math.round(deg(s.steer)));
+    state.manual.forEach((v, i) => { $('#m' + i).value = v; });
+  }
+  syncOut();
+});
+$('#handle').addEventListener('input', (e) => { state.handle = Number(e.target.value); syncOut(); });
+$('#straightBtn').addEventListener('click', () => {
+  state.steerMode = 'straight'; state.handle = 0; state.manual = [0, 0, 0, 0];
+  $('#steerMode').value = 'straight'; $('#handle').value = 0; state.manual.forEach((v, i) => { $('#m' + i).value = v; });
+  syncOut();
+});
+window.addEventListener('keydown', (e) => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  if (!['front', 'rear4', 'crab'].includes(state.steerMode)) { state.steerMode = 'front'; $('#steerMode').value = 'front'; }
+  state.handle = Math.max(-40, Math.min(40, state.handle + (e.key === 'ArrowLeft' ? 2 : -2)));
+  $('#handle').value = state.handle; syncOut(); e.preventDefault();
+});
+function bind(id, key, after, parse = String) {
+  $('#' + id).addEventListener('input', (e) => { state[key] = parse(e.target.value); syncOut(); after(); });
+}
+bind('unit', 'unit', rebuildWheels); bind('pos', 'pos', rebuildWheels); bind('axis', 'axis', rebuildWheels);
+bind('speed', 'speed', refreshSpecs, Number);
+$('#mirror').addEventListener('change', (e) => { state.mirror = e.target.checked; rebuildWheels(); });
+$('#reverse').addEventListener('change', (e) => { state.reverse = e.target.checked; refreshSpecs(); });
+$('#terrain').addEventListener('change', (e) => { state.terrain = e.target.value; });
+
+const playBtn = $('#playBtn');
+playBtn.addEventListener('click', () => {
+  state.playing = !state.playing;
+  playBtn.textContent = state.playing ? '一時停止' : '再生';
+  playBtn.setAttribute('aria-pressed', String(state.playing));
+});
+// カメラはローバーの向きを基準に置く
+const cams = { camIso: [130, 80, 150], camSide: [0, 32, 240], camFront: [240, 40, 0.01], camBack: [-240, 45, 0.01], camTop: [0, 320, 0.01] };
+function setCam(offset) {
+  const v = new THREE.Vector3(...offset).applyAxisAngle(new THREE.Vector3(0, 1, 0), roverRoot.rotation.y);
+  camera.position.copy(roverRoot.position).add(v);
+  controls.target.copy(roverRoot.position).add(new THREE.Vector3(0, 24, 0));
+  controls.update();
+}
+Object.entries(cams).forEach(([id, p]) => $('#' + id).addEventListener('click', () => setCam(p)));
+$('#autoRot').addEventListener('click', (e) => {
+  controls.autoRotate = !controls.autoRotate;
+  e.currentTarget.setAttribute('aria-pressed', String(controls.autoRotate));
+});
+
+/* ---------- サイズ・テーマ ---------- */
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- 走行ループ ---------- */
+const STEER_RATE = rad(120); // starmが回る速さ(°/秒)
+let last = performance.now(), t = 0, lastSpec = 0, loaded = false;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  // starmはゆっくり目標の向きへ回る
+  const tgt = targetAngles();
+  slots.forEach((s, i) => {
+    const m = STEER_RATE * dt, d = tgt[i] - s.steer;
+    s.steer += Math.max(-m, Math.min(m, d));
+    s.pivot.rotation.z = s.steer;
+  });
+  motion = solveMotion(slots.map((s) => s.steer), state.speed, state.reverse);
+
+  if (state.playing) {
+    t += dt;
+    const px = roverRoot.position.x, pz = roverRoot.position.z;
+    const th = roverRoot.rotation.y;
+    roverRoot.rotation.y = th + motion.w * dt;
+    const yaw = roverRoot.rotation.y;
+    roverRoot.position.x += (motion.vx * Math.cos(yaw) - motion.vy * Math.sin(yaw)) * dt;
+    roverRoot.position.z += (-motion.vx * Math.sin(yaw) - motion.vy * Math.cos(yaw)) * dt;
+    slots.forEach((s, i) => { s.angle += motion.s[i] * dt / (s.radius * MM); if (s.spin) s.spin.rotation.y = s.angle; });
+    // カメラはローバーに付いていく
+    const dx = roverRoot.position.x - px, dz = roverRoot.position.z - pz;
+    camera.position.x += dx; camera.position.z += dz; controls.target.x += dx; controls.target.z += dz;
+
+    if (loaded) {
+      const sp = Math.hypot(motion.vx, motion.vy), k = state.terrain === 'rocks' ? Math.min(sp / 30, 1) : 0;
+      const base = (Math.max(...slots.map((s) => s.radius)) - HUB_Z) * MM;
+      rover.position.y = base + k * (0.35 * Math.sin(t * sp * 0.12) + 0.2 * Math.sin(t * sp * 0.26 + 1));
+      rover.rotation.y = k * 0.006 * Math.sin(t * sp * 0.08);
+    }
+  }
+  const rx = roverRoot.position.x, rz = roverRoot.position.z;
+  ground.position.set(Math.round(rx / TILE) * TILE, 0, Math.round(rz / TILE) * TILE); // 模様は TILE ごとに同じなので継ぎ目は見えない
+  sun.position.set(rx + 110, 220, rz + 90); sun.target.position.set(rx, 0, rz);
+  rocks.forEach((r) => {
+    const p = r.position;
+    if (p.x - rx > WRAP / 2) p.x -= WRAP; else if (p.x - rx < -WRAP / 2) p.x += WRAP;
+    if (p.z - rz > WRAP / 2) p.z -= WRAP; else if (p.z - rz < -WRAP / 2) p.z += WRAP;
+    const k = Math.min(Math.max((Math.hypot(p.x - rx, p.z - rz) - 110) / 60, 0), 1);
+    r.visible = state.terrain === 'rocks' && k > 0.03;
+    r.scale.copy(r.userData.base).multiplyScalar(k);
+  });
+  if (now - lastSpec > 150) { refreshSpecs(); lastSpec = now; }
+
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- 起動: 固定部品と標準タイヤを読み込む ---------- */
+applyTheme();
+syncOut();
+camera.position.set(...cams.camIso);
+controls.update();
+resize();
+requestAnimationFrame(frame);
+
+// 本物のSTL(GitHub Pages)があればそれを、なければ base64入りのJSON(Claudeの公開ページ)を使う
+async function fetchSTL(name) {
+  try {
+    const r = await fetch(`models/${name}.stl`);
+    if (r.ok) {
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength > 84 && buf.byteLength === 84 + new DataView(buf).getUint32(80, true) * 50) return parseSTL(buf);
+    }
+  } catch (e) { /* JSONを試す */ }
+  const r = await fetch(`models/${name}.json`);
+  if (!r.ok) throw new Error(`${name} (${r.status})`);
+  const { b64, bytes } = await r.json();
+  const bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  if (bytes && u8.length !== bytes) throw new Error(`${name} の大きさが合いません`);
+  return parseSTL(u8.buffer);
+}
+try {
+  const [base, starmL, starmR, tireL, tireR] = await Promise.all(
+    ['base_link', 'starm_l', 'starm_r', 'tire_l', 'tire_r'].map(fetchSTL));
+  rover.add(shadowed(new THREE.Mesh(base, baseMat)));
+  slots.forEach((s) => { s.pivot.add(shadowed(new THREE.Mesh(s.side > 0 ? starmL : starmR, starmMat))); });
+  stdTires = { l: tireL, r: tireR };
+  slots.forEach(useStandard);
+  rebuildWheels();
+  loaded = true;
+  $('#loading').remove();
+  setStatus('標準タイヤを装着しています。走り方を変えると、starmが回って向きが変わります。');
+} catch (err) {
+  $('#loading').textContent = '部品を読み込めませんでした：' + err.message;
+  setStatus('部品のSTLを読み込めませんでした。ページを開き直してください。', true);
+}
+</script>
+
+</body>
+</html>
