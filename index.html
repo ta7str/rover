@@ -25,43 +25,50 @@
   --scene-ground: #303846;
   --scene-line: #465366;
   --scene-rock: #566170;
+
   --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0a1315;
-    --panel: #101c1f;
-    --panel-2: #172a2d;
-    --fg: #e2f0ee;
-    --muted: #92aaa8;
-    --line: #243639;
-    --accent: #4fe0c0;
-    --accent-ink: #03201a;
-    --accent-soft: #123b36;
-    --warn: #ff9a7a;
-    --scene-sky: #0b1722;
-    --scene-ground: #2a2a33;
-    --scene-line: #3a3a47;
-    --scene-rock: #3d3d4a;
+    --bg: #0A1424;
+    --panel: #111F33;
+    --panel-2: #1B2D43;
+    --fg: #E6EDF5;
+    --muted: #91A4B9;
+    --line: #2B4059;
+    --accent: #0090C4;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #123D55;
+    --warn: #FF795F;
+
+    --scene-sky: #17283D;
+    --scene-ground: #303846;
+    --scene-line: #465366;
+    --scene-rock: #566170;
+
     color-scheme: dark;
   }
 }
+
 :root[data-theme="dark"] {
-  --bg: #0a1315;
-  --panel: #101c1f;
-  --panel-2: #172a2d;
-  --fg: #e2f0ee;
-  --muted: #92aaa8;
-  --line: #243639;
-  --accent: #4fe0c0;
-  --accent-ink: #03201a;
-  --accent-soft: #123b36;
-  --warn: #ff9a7a;
-  --scene-sky: #0b1722;
-  --scene-ground: #2a2a33;
-  --scene-line: #3a3a47;
-  --scene-rock: #3d3d4a;
+  --bg: #0A1424;
+  --panel: #111F33;
+  --panel-2: #1B2D43;
+  --fg: #E6EDF5;
+  --muted: #91A4B9;
+  --line: #2B4059;
+  --accent: #0090C4;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #123D55;
+  --warn: #FF795F;
+
+  --scene-sky: #17283D;
+  --scene-ground: #303846;
+  --scene-line: #465366;
+  --scene-rock: #566170;
+
   color-scheme: dark;
 }
 
@@ -124,9 +131,22 @@ header p { margin: 0; color: var(--muted); font-size: 12.5px; }
 }
 .btn:hover, button:hover { border-color: var(--accent); }
 .btn:focus-within, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn.primary, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
-button.primary[aria-pressed="true"] { background: var(--accent); }
+.btn.primary, button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(0, 144, 196, 0.18);
+}
+button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.primary[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
 
 .wheels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .wheel {
