@@ -10,20 +10,21 @@
 <style>
 /* Layout: 左に3Dステージ、右に操作パネル。狭い画面ではステージの下にパネルを積む。 */
 :root {
-  --bg: #eaf1f0;
-  --panel: #f6faf9;
-  --panel-2: #e3ecea;
-  --fg: #10201f;
-  --muted: #4f6666;
-  --line: #c5d4d2;
-  --accent: #0d8a79;
-  --accent-ink: #ffffff;
-  --accent-soft: #cfeae5;
-  --warn: #b4452a;
-  --scene-sky: #dbe8ec;
-  --scene-ground: #d9cdbb;
-  --scene-line: #c4b49d;
-  --scene-rock: #b3a48f;
+  --bg: #0A1424;
+  --panel: #111F33;
+  --panel-2: #1B2D43;
+  --fg: #E6EDF5;
+  --muted: #91A4B9;
+  --line: #2B4059;
+  --accent: #0090C4;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #123D55;
+  --warn: #FF795F;
+
+  --scene-sky: #17283D;
+  --scene-ground: #303846;
+  --scene-line: #465366;
+  --scene-rock: #566170;
   --font-body: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -389,7 +390,7 @@ const slots = [
   { label: '後右', key: 'rb', sx: -1, side: -1 },
 ];
 slots.forEach((s) => {
-  s.mat = mat('#19b394', { roughness: 0.62 });
+  s.mat = mat('#0090c4', { roughness: 0.62 });
   s.angle = 0; s.steer = 0; s.radius = 185; s.width = 120; s.holder = null; s.spin = null; s.src = null;
   s.pivot = new THREE.Group();
   s.pivot.position.set(s.sx * MOUNT.x, s.side * MOUNT.y, MOUNT.z);
@@ -524,7 +525,7 @@ slots.forEach((s, i) => {
   const li = document.createElement('li'); li.className = 'wheel';
   li.innerHTML = `<span class="pos">${s.label}</span>
     <span class="meta"><span class="fname" id="wn${i}"></span><span class="spec" id="ws${i}"></span></span>
-    <input type="color" id="wc${i}" value="#19b394" aria-label="${s.label}の色">
+    <input type="color" id="wc${i}" value="#0090c4" aria-label="${s.label}の色">
     <label class="btn" for="wf${i}">変更</label><input id="wf${i}" class="sr-only" type="file" accept=".stl">`;
   listEl.appendChild(li);
   li.querySelector('input[type=color]').addEventListener('input', (e) => { s.mat.color.set(e.target.value); });
