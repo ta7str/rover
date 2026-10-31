@@ -245,8 +245,10 @@ select {
       <h2>走行</h2>
       <div class="field"><label for="speed">速さ</label><input id="speed" type="range" min="0" max="120" step="1" value="40"><output id="speedOut"></output></div>
       <label class="check"><input id="reverse" type="checkbox"><span>後退する</span></label>
-      <div class="field two"><label for="terrain">路面</label>
-        <select id="terrain"><option value="flat">平らな地面</option><option value="rocks" selected>石ころ道</option></select></div>
+      <div class="field two"><label for="ground">地面</label>
+        <select id="ground"><option value="grid" selected>標準（格子）</option><option value="mars">火星</option><option value="moon">月</option></select></div>
+      <div class="field two"><label for="terrain">石ころ</label>
+        <select id="terrain"><option value="flat">なし</option><option value="rocks" selected>あり</option></select></div>
     </section>
 
     <p id="status" role="status" aria-live="polite"></p>
@@ -271,11 +273,11 @@ const HUB_DROP = 231.53;                    // サスアーム原点からモー
 const TIRE_BACK = 56;                       // 標準タイヤの原点は、モーター軸端がハブ板に当たる位置(外側から56mm)
 const HUB_Z = MOUNT.z - HUB_DROP;           // 軸の高さ
 const MM = 0.1;                              // 表示は 1 = 1cm
-const TILE = 40;                             // 地面テクスチャ1枚の大きさ(cm)
+let TILE = 40;                               // 地面テクスチャ1枚の大きさ(cm)。地面を切り替えると変わる
 const WRAP = 700;                            // 石ころが繰り返される範囲(cm)
 
 const state = {
-  unit: 'mm', pos: 'origin', axis: 'y', mirror: true, speed: 40, terrain: 'rocks', playing: true,
+  unit: 'mm', pos: 'origin', axis: 'y', mirror: true, speed: 40, terrain: 'rocks', ground: 'grid', playing: true,
   steerMode: 'straight', handle: 0, manual: [0, 0, 0, 0], reverse: false,
 };
 
@@ -303,7 +305,8 @@ controls.minDistance = 40;
 controls.maxDistance = 700;
 controls.autoRotateSpeed = 1.6;
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a99, 1.0));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8a8a99, 1.0);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -312,18 +315,22 @@ sun.shadow.bias = -0.0004;
 scene.add(sun, sun.target);
 
 /* ---------- 地面と石 ---------- */
-const groundTex = new THREE.CanvasTexture(document.createElement('canvas'));
-groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
-groundTex.colorSpace = THREE.SRGBColorSpace;
-groundTex.anisotropy = 8;
-groundTex.repeat.set(4000 / TILE, 4000 / TILE);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+const groundMat = new THREE.MeshStandardMaterial({ roughness: 1 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-function drawGround() {
-  const c = groundTex.image; c.width = c.height = 512;
+function finishTexture(c) {
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+// 標準の地面: 砂色に格子の線
+function makeGridTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
   const g = c.getContext('2d');
   g.fillStyle = css('--scene-ground'); g.fillRect(0, 0, 512, 512);
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -333,8 +340,85 @@ function drawGround() {
   }
   g.strokeStyle = css('--scene-line'); g.lineWidth = 3;
   g.strokeRect(0, 0, 512, 512);
-  groundTex.needsUpdate = true;
+  return finishTexture(c);
 }
+
+// 火星と月の地面: 継ぎ目のない値ノイズから、起伏のある模様を作る(線は引かない)
+function hash2(x, y, s) {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vnoise(u, v, period, s) { // u, v は 0〜1。period マスで一周するので、並べても継ぎ目が出ない
+  const x = u * period, y = v * period, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const X0 = ((x0 % period) + period) % period, X1 = (X0 + 1) % period, Y0 = ((y0 % period) + period) % period, Y1 = (Y0 + 1) % period;
+  const a = hash2(X0, Y0, s), b = hash2(X1, Y0, s), c = hash2(X0, Y1, s), d = hash2(X1, Y1, s);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+function fbm(u, v, base, oct, s) {
+  let amp = 0.5, per = base, sum = 0, norm = 0;
+  for (let o = 0; o < oct; o++) { sum += amp * vnoise(u, v, per, s + o); norm += amp; amp *= 0.5; per *= 2; }
+  return sum / norm;
+}
+const GROUND_LOOK = {
+  mars: { lo: [88, 40, 26], hi: [214, 136, 88], seed: 3 },
+  moon: { lo: [52, 52, 56], hi: [176, 176, 180], seed: 17 },
+};
+function makeSurfaceTexture(kind) {
+  const N = 1024, { lo, hi, seed } = GROUND_LOOK[kind];
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d'), img = g.createImageData(N, N), px = img.data, h = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N;
+    let t = fbm(u, v, 4, 6, seed);
+    if (kind === 'mars') t += 0.07 * Math.sin(2 * Math.PI * (v * 36 + 5 * fbm(u, v, 3, 2, 40))) * fbm(u, v, 2, 2, 60); // 風が作った砂の筋
+    h[y * N + x] = t;
+  }
+  if (kind === 'moon') { // クレーター: 縁が盛り上がり、中がくぼむ。端をまたぐものは反対側にも描いて継ぎ目を消す
+    let s = 99; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 46; i++) {
+      const r = (i < 4 ? 140 + rnd() * 120 : 18 + rnd() * rnd() * 150), cx = rnd() * N, cy = rnd() * N, amp = 0.5 + rnd() * 0.4;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const px0 = cx + ox * N, py0 = cy + oy * N, R = r * 1.5;
+        for (let y = Math.max(0, Math.floor(py0 - R)); y <= Math.min(N - 1, Math.ceil(py0 + R)); y++)
+          for (let x = Math.max(0, Math.floor(px0 - R)); x <= Math.min(N - 1, Math.ceil(px0 + R)); x++) {
+            const d = Math.hypot(x - px0, y - py0) / r;
+            if (d > 1.5) continue;
+            h[y * N + x] += amp * 0.35 * (d < 1 ? -(1 - d * d) : 0) + amp * 0.2 * Math.exp(-(((d - 1.02) / 0.14) ** 2));
+          }
+      }
+    }
+  }
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < h.length; i++) { if (h[i] < mn) mn = h[i]; if (h[i] > mx) mx = h[i]; }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x, t = Math.min(1, Math.max(0, (h[i] - mn) / (mx - mn) + (hash2(x, y, 7) - 0.5) * 0.07)), o = i * 4;
+    px[o] = lo[0] + (hi[0] - lo[0]) * t; px[o + 1] = lo[1] + (hi[1] - lo[1]) * t; px[o + 2] = lo[2] + (hi[2] - lo[2]) * t; px[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return finishTexture(c);
+}
+const surfaceCache = {};
+function groundTexture(kind) {
+  if (kind === 'grid') return makeGridTexture(); // 明るさの切り替えで色が変わるので毎回作る
+  return surfaceCache[kind] || (surfaceCache[kind] = makeSurfaceTexture(kind));
+}
+
+// 星空(月だけ)。カメラに付いてくるので、いつも遠くに見える
+const stars = (() => {
+  const n = 6000, pos = new Float32Array(n * 3);
+  let s = 5; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, e = Math.asin(0.04 + rnd() * 0.96), r = 3500;
+    pos[i * 3] = r * Math.cos(e) * Math.cos(a); pos[i * 3 + 1] = r * Math.sin(e); pos[i * 3 + 2] = r * Math.cos(e) * Math.sin(a);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.9, depthWrite: false }));
+  p.visible = false; p.frustumCulled = false;
+  scene.add(p);
+  return p;
+})();
 
 // 石ころは地面に固定。ローバーの周囲 WRAP の範囲で繰り返し、車体に近づくと小さくなって車輪との重なりを避ける
 const rockMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
@@ -352,12 +436,25 @@ const rocks = [];
   }
 }
 
+// 地面ごとの空・光・石・模様の大きさ。標準だけは明るさの設定(ライト/ダーク)に合わせる
+const SCENES = {
+  grid: { sky: () => css('--scene-sky'), rock: () => css('--scene-rock'), fog: [350, 1400], hemi: [0xffffff, 0x8a8a99, 1.0], sun: [0xffffff, 2.4], tile: 40 },
+  mars: { sky: '#d8a17b', rock: '#6a3828', fog: [250, 1500], hemi: [0xffe2cb, 0x6a3b2a, 0.9], sun: [0xffd8b2, 2.3], tile: 300, bump: 2.5 },
+  moon: { sky: '#000000', rock: '#5b5b60', fog: [700, 1900], hemi: [0x8d98b8, 0x1d1d22, 0.2], sun: [0xffffff, 3.6], tile: 300, bump: 3.5, stars: true },
+};
 function applyTheme() {
-  const sky = css('--scene-sky');
+  const cfg = SCENES[state.ground], v = (x) => (typeof x === 'function' ? x() : x), sky = v(cfg.sky);
   scene.background = new THREE.Color(sky);
-  scene.fog = new THREE.Fog(sky, 350, 1400);
-  rockMat.color.set(css('--scene-rock'));
-  drawGround();
+  scene.fog = new THREE.Fog(sky, cfg.fog[0], cfg.fog[1]);
+  hemi.color.set(cfg.hemi[0]); hemi.groundColor.set(cfg.hemi[1]); hemi.intensity = cfg.hemi[2];
+  sun.color.set(cfg.sun[0]); sun.intensity = cfg.sun[1];
+  rockMat.color.set(v(cfg.rock));
+  stars.visible = !!cfg.stars;
+  const old = groundMat.map, tex = groundTexture(state.ground);
+  TILE = cfg.tile; tex.repeat.set(4000 / TILE, 4000 / TILE);
+  groundMat.map = tex; groundMat.bumpMap = cfg.bump ? tex : null; groundMat.bumpScale = cfg.bump || 1;
+  groundMat.needsUpdate = true;
+  if (old && old !== tex && !Object.values(surfaceCache).includes(old)) old.dispose();
 }
 
 /* ---------- ローバー ---------- */
@@ -634,6 +731,11 @@ bind('speed', 'speed', refreshSpecs, Number);
 $('#mirror').addEventListener('change', (e) => { state.mirror = e.target.checked; rebuildWheels(); });
 $('#reverse').addEventListener('change', (e) => { state.reverse = e.target.checked; refreshSpecs(); });
 $('#terrain').addEventListener('change', (e) => { state.terrain = e.target.value; });
+$('#ground').addEventListener('change', (e) => {
+  state.ground = e.target.value;
+  applyTheme();
+  setStatus({ grid: '標準の地面に切り替えました。', mars: '火星の地面に切り替えました。', moon: '月の地面に切り替えました。' }[state.ground]);
+});
 
 const playBtn = $('#playBtn');
 playBtn.addEventListener('click', () => {
@@ -703,6 +805,7 @@ function frame(now) {
   const rx = roverRoot.position.x, rz = roverRoot.position.z;
   ground.position.set(Math.round(rx / TILE) * TILE, 0, Math.round(rz / TILE) * TILE); // 模様は TILE ごとに同じなので継ぎ目は見えない
   sun.position.set(rx + 110, 220, rz + 90); sun.target.position.set(rx, 0, rz);
+  stars.position.copy(camera.position);
   rocks.forEach((r) => {
     const p = r.position;
     if (p.x - rx > WRAP / 2) p.x -= WRAP; else if (p.x - rx < -WRAP / 2) p.x += WRAP;
