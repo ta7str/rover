@@ -189,16 +189,16 @@ select {
   <div class="stage" id="stage">
     <canvas id="gl" aria-label="ローバーが走る3Dビュー"></canvas>
     <div class="overlay tl">
-      <button id="playBtn" class="primary" aria-pressed="true">一時停止</button>
-      <button id="camIso" type="button">斜め</button>
-      <button id="camSide" type="button">真横</button>
-      <button id="camFront" type="button">正面</button>
-      <button id="camBack" type="button">後ろ</button>
-      <button id="camTop" type="button">真上</button>
-      <button id="autoRot" type="button" aria-pressed="false">自動回転</button>
+      <button id="playBtn" class="primary" aria-pressed="true">すとっぷ</button>
+      <button id="camIso" type="button">ななめ</button>
+      <button id="camSide" type="button">よこ</button>
+      <button id="camFront" type="button">まえ</button>
+      <button id="camBack" type="button">うしろ</button>
+      <button id="camTop" type="button">うえ</button>
+      <button id="autoRot" type="button" aria-pressed="false">かいてん</button>
     </div>
     <div class="overlay bl">
-      <span class="hud" id="hudSpeed">速度 40 cm/s</span>
+      <span class="hud" id="hudSpeed">そくど 40 cm/s</span>
       <span class="hud drop-hint">タイヤのSTLをここにドロップできます</span>
     </div>
     <div class="loading" id="loading">ローバーの部品を読み込み中…</div>
@@ -209,16 +209,16 @@ select {
       <h2>ステアリング（starmの回転）</h2>
       <div class="field two"><label for="steerMode">走り方</label>
         <select id="steerMode">
-          <option value="straight">直進</option>
-          <option value="front">前輪で曲がる</option>
-          <option value="rear4">前後逆向きに切る（小回り）</option>
-          <option value="crab">4輪同じ向き（斜めに進む）</option>
-          <option value="spin">その場で回る</option>
-          <option value="manual">1本ずつ手動</option>
+          <option value="straight">まっすぐ</option>
+          <option value="front">まえのタイヤでまがる</option>
+          <option value="rear4">こまわり</option>
+          <option value="crab">ななめにすすむ</option>
+          <option value="spin">ぐるぐる</option>
+          <option value="manual">マニュアル</option>
         </select></div>
       <div class="field"><label for="handle">ハンドル</label><input id="handle" type="range" min="-40" max="40" step="1" value="0"><output id="handleOut"></output></div>
       <div class="manual" id="manual" hidden></div>
-      <button id="straightBtn" type="button">まっすぐに戻す</button>
+      <button id="straightBtn" type="button">まっすぐにもどす</button>
       <p class="motion" id="motion" aria-live="off">直進中</p>
       <p class="hint warn" id="slipWarn" hidden></p>
       <p class="hint">プラスが左、マイナスが右です。キーボードの ← → でもハンドルを切れます。</p>
