@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}[hidden]{display:none!important}</style></head><body>
-<title>KIT-AURORA ローバーラボ</title>
+<title>KIT-AURORA TA4Simulate</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -28,16 +28,16 @@ main{flex:1;min-height:0;position:relative}
 iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
 iframe[hidden]{display:none}
 </style>
-<div id="gate"><form id="gateForm" autocomplete="off"><div class="gh">KIT-AURORA ローバーラボ</div><label for="pw">パスワード</label><input id="pw" type="password" inputmode="numeric" autocomplete="off" placeholder="パスワードを入力"><button type="submit">ひらく</button><p id="gateErr" role="alert"></p></form></div>
+<div id="gate"><form id="gateForm" autocomplete="off"><div class="gh">KIT-AURORA TA4Simulate</div><label for="pw">password</label><input id="pw" type="password" inputmode="numeric" autocomplete="off" placeholder="パスワードを入力"><button type="submit">ひらく</button><p id="gateErr" role="alert"></p></form></div>
 <div id="app" hidden>
 <nav role="tablist" aria-label="ツール切り替え">
   <span class="brand">KIT-AURORA</span>
-  <button role="tab" id="tab-rover" aria-selected="true" aria-controls="f-rover" type="button">ローバー走行ビュー</button>
-  <button role="tab" id="tab-tire" aria-selected="false" aria-controls="f-tire" type="button">タイヤメーカー</button>
+  <button role="tab" id="tab-rover" aria-selected="true" aria-controls="f-rover" type="button">Simulator</button>
+  <button role="tab" id="tab-tire" aria-selected="false" aria-controls="f-tire" type="button">TireMaker</button>
 </nav>
 <main>
-  <iframe id="f-rover" title="ローバー走行ビュー" allow="hid; fullscreen"></iframe>
-  <iframe id="f-tire" title="タイヤメーカー" hidden></iframe>
+  <iframe id="f-rover" title="Simulator" allow="hid; fullscreen"></iframe>
+  <iframe id="f-tire" title="TireMaker" hidden></iframe>
 </main>
 </div>
 <script>
@@ -65,7 +65,7 @@ const form=document.getElementById('gateForm'),pwEl=document.getElementById('pw'
 async function tryPw(pw,quiet){
   if(!pw)return false;
   try{await unlock(pw);try{sessionStorage.setItem('aurora-pw',pw)}catch(e){}start();return true;}
-  catch(e){if(!quiet){errEl.textContent=(window.crypto&&crypto.subtle)?'パスワードがちがいます。':'この環境では開けません(https のページで開いてください)。';pwEl.select();}return false;}
+  catch(e){if(!quiet){errEl.textContent=(window.crypto&&crypto.subtle)?'パスワードがちがいます':'この環境では開けません(https のページで開いてください)。';pwEl.select();}return false;}
 }
 form.addEventListener('submit',async e=>{e.preventDefault();errEl.textContent='確認中…';await tryPw(pwEl.value.trim(),false);});
 try{const saved=sessionStorage.getItem('aurora-pw');if(saved)tryPw(saved,true);}catch(e){}
